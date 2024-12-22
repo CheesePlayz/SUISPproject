@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Network Traffic Monitor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        #packet-data {
+            border: 1px solid #ccc;
+            padding: 10px;
+            height: 400px;
+            overflow-y: scroll;
+            background: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    <h1>Live Network Traffic Monitor</h1>
+    <div id="packet-data">
+        <p>Waiting for packets...</p>
+    </div>
+
+    <script>
+        const packetDataDiv = document.getElementById('packet-data');
+
+        // Establish a connection to the stream endpoint
+        const eventSource = new EventSource('/stream');
+
+        // Append new packet data to the div
+        eventSource.onmessage = function(event) {
+            const packetSummary = document.createElement('p');
+            packetSummary.textContent = event.data;
+            packetDataDiv.appendChild(packetSummary);
+
+            // Auto-scroll to the bottom
+            packetDataDiv.scrollTop = packetDataDiv.scrollHeight;
+        };
+    </script>
+</body>
+</html>
