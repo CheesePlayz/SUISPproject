@@ -1,4 +1,4 @@
-from flask import Flask, Response, render_template, jsonify
+from flask import Flask, Response, render_template
 from scapy.all import sniff
 from scapy.config import conf
 from queue import Queue

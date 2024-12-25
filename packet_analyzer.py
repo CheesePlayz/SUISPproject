@@ -1,5 +1,4 @@
 from scapy.layers.inet import IP, TCP, UDP, ICMP
-from scapy.layers.http import HTTP, HTTPRequest
 from collections import defaultdict
 from datetime import datetime, timedelta
 import logging
