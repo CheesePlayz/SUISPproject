@@ -3,42 +3,127 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Network Traffic Monitor</title>
+    <title>Network Security Monitor</title>
     <style>
         body {
             font-family: Arial, sans-serif;
             margin: 20px;
+            background-color: #f0f0f0;
         }
-        #packet-data {
-            border: 1px solid #ccc;
-            padding: 10px;
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .monitoring-panel {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .panel {
+            background: white;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        #packet-data, #threat-data {
             height: 400px;
             overflow-y: scroll;
             background: #f9f9f9;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+        }
+        .threat-entry {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 3px;
+        }
+        .threat-Critical {
+            background: #ffe6e6;
+            border-left: 3px solid #ff0000;
+        }
+        .threat-High {
+            background: #fff0e6;
+            border-left: 3px solid #ff8c00;
+        }
+        .threat-Medium {
+            background: #fff9e6;
+            border-left: 3px solid #ffd700;
+        }
+        .threat-Low {
+            background: #e6ffe6;
+            border-left: 3px solid #00ff00;
+        }
+        .packet-entry {
+            border-bottom: 1px solid #eee;
+            padding: 5px 0;
+        }
+        h2 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .timestamp {
+            color: #666;
+            font-size: 0.8em;
         }
     </style>
 </head>
 <body>
-    <h1>Live Network Traffic Monitor</h1>
-    <div id="packet-data">
-        <p>Waiting for packets...</p>
+<div class="container">
+    <h1>Network Security Monitor</h1>
+    <div class="monitoring-panel">
+        <div class="panel">
+            <h2>Network Traffic</h2>
+            <div id="packet-data">
+                <p>Waiting for packets...</p>
+            </div>
+        </div>
+        <div class="panel">
+            <h2>Security Threats</h2>
+            <div id="threat-data">
+                <p>Monitoring for threats...</p>
+            </div>
+        </div>
     </div>
+</div>
 
-    <script>
-        const packetDataDiv = document.getElementById('packet-data');
+<script>
+    const packetDataDiv = document.getElementById('packet-data');
+    const threatDataDiv = document.getElementById('threat-data');
 
-        // Establish a connection to the stream endpoint
-        const eventSource = new EventSource('/stream');
+    // Establish a connection to the stream endpoint
+    const eventSource = new EventSource('/stream');
 
-        // Append new packet data to the div
-        eventSource.onmessage = function(event) {
-            const packetSummary = document.createElement('p');
-            packetSummary.textContent = event.data;
-            packetDataDiv.appendChild(packetSummary);
+    // Handle incoming packet data
+    eventSource.onmessage = function(event) {
+        const data = JSON.parse(event.data);
 
-            // Auto-scroll to the bottom
-            packetDataDiv.scrollTop = packetDataDiv.scrollHeight;
-        };
-    </script>
+        // Add packet information
+        const packetEntry = document.createElement('div');
+        packetEntry.className = 'packet-entry';
+        packetEntry.innerHTML = `
+                <strong>Packet:</strong> ${data.summary}<br>
+                <small>Protocol: ${data.analysis.protocol}</small>
+            `;
+        packetDataDiv.appendChild(packetEntry);
+        packetDataDiv.scrollTop = packetDataDiv.scrollHeight;
+
+        // If threats are detected, add them to the threat panel
+        if (data.analysis.threats && data.analysis.threats.length > 0) {
+            data.analysis.threats.forEach(threat => {
+                const threatEntry = document.createElement('div');
+                threatEntry.className = `threat-entry threat-${threat.severity}`;
+                threatEntry.innerHTML = `
+                        <strong>${threat.type}</strong> (${threat.severity})<br>
+                        ${threat.details}<br>
+                        <span class="timestamp">${new Date().toLocaleTimeString()}</span>
+                    `;
+                threatDataDiv.appendChild(threatEntry);
+                threatDataDiv.scrollTop = threatDataDiv.scrollHeight;
+            });
+        }
+    };
+</script>
 </body>
 </html>
