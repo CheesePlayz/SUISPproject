@@ -4,7 +4,7 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 import logging
 from threading import Lock
-from config import ALERT_COOLDOWN  # importamo konstantu
+from config import ALERT_COOLDOWN
 
 class AlertSystem:
     def __init__(self, smtp_config):
@@ -20,11 +20,10 @@ class AlertSystem:
         - to_email: Recipient email
         """
         self.smtp_config = smtp_config
-        self.alert_history = {}  # Track sent alerts to prevent spam
-        self.alert_threshold = timedelta(minutes=ALERT_COOLDOWN)  # Minimum time between similar alerts
-        self.lock = Lock()  # Thread safety for alert history
+        self.alert_history = {}
+        self.alert_threshold = timedelta(minutes=ALERT_COOLDOWN)
+        self.lock = Lock()
 
-        # Configure logging
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s',
@@ -34,11 +33,9 @@ class AlertSystem:
 
     def send_alert(self, threat_data, packet_info):
         """Send alert for detected security threat."""
-        # Generate alert key based on threat type and source IP
         alert_key = f"{threat_data['type']}_{packet_info['src_ip']}"
 
         with self.lock:
-            # Check if we've recently sent a similar alert
             if self._should_send_alert(alert_key):
                 try:
                     self._send_email_alert(threat_data, packet_info)
@@ -60,17 +57,14 @@ class AlertSystem:
 
     def _send_email_alert(self, threat_data, packet_info):
         """Send email alert about security threat."""
-        # Create message
         msg = MIMEMultipart()
         msg['From'] = self.smtp_config['from_email']
         msg['To'] = self.smtp_config['to_email']
         msg['Subject'] = f"Security Alert: {threat_data['type']} Detected"
 
-        # Create email body
         body = self._create_alert_body(threat_data, packet_info)
         msg.attach(MIMEText(body, 'plain'))
 
-        # Send email
         with smtplib.SMTP(self.smtp_config['host'], self.smtp_config['port']) as server:
             server.starttls()
             server.login(self.smtp_config['username'], self.smtp_config['password'])

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Network Security Monitor</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -11,12 +12,12 @@
             background-color: #f0f0f0;
         }
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
         }
-        .monitoring-panel {
+        .dashboard {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: repeat(2, 1fr);
             gap: 20px;
             margin-top: 20px;
         }
@@ -26,8 +27,11 @@
             border-radius: 5px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
+        .full-width {
+            grid-column: 1 / -1;
+        }
         #packet-data, #threat-data {
-            height: 400px;
+            height: 200px;
             overflow-y: scroll;
             background: #f9f9f9;
             padding: 10px;
@@ -39,51 +43,39 @@
             margin: 5px 0;
             border-radius: 3px;
         }
-        .threat-Critical {
-            background: #ffe6e6;
-            border-left: 3px solid #ff0000;
-        }
-        .threat-High {
-            background: #fff0e6;
-            border-left: 3px solid #ff8c00;
-        }
-        .threat-Medium {
-            background: #fff9e6;
-            border-left: 3px solid #ffd700;
-        }
-        .threat-Low {
-            background: #e6ffe6;
-            border-left: 3px solid #00ff00;
-        }
-        .packet-entry {
-            border-bottom: 1px solid #eee;
-            padding: 5px 0;
-        }
-        h2 {
-            color: #333;
-            margin-bottom: 10px;
-        }
-        .timestamp {
-            color: #666;
-            font-size: 0.8em;
+        .threat-Critical { background: #ffe6e6; border-left: 3px solid #ff0000; }
+        .threat-High { background: #fff0e6; border-left: 3px solid #ff8c00; }
+        .threat-Medium { background: #fff9e6; border-left: 3px solid #ffd700; }
+        .threat-Low { background: #e6ffe6; border-left: 3px solid #00ff00; }
+        .chart {
+            width: 100%;
+            height: 300px;
         }
     </style>
 </head>
 <body>
 <div class="container">
     <h1>Network Security Monitor</h1>
-    <div class="monitoring-panel">
+    <div class="dashboard">
+        <div class="panel full-width">
+            <h2>Network Activity Timeline</h2>
+            <div id="timeline" class="chart"></div>
+        </div>
         <div class="panel">
-            <h2>Network Traffic</h2>
-            <div id="packet-data">
-                <p>Waiting for packets...</p>
-            </div>
+            <h2>IP Activity</h2>
+            <div id="ip-activity" class="chart"></div>
+        </div>
+        <div class="panel">
+            <h2>Threat Distribution</h2>
+            <div id="threat-pie" class="chart"></div>
+        </div>
+        <div class="panel">
+            <h2>Live Network Traffic</h2>
+            <div id="packet-data"></div>
         </div>
         <div class="panel">
             <h2>Security Threats</h2>
-            <div id="threat-data">
-                <p>Monitoring for threats...</p>
-            </div>
+            <div id="threat-data"></div>
         </div>
     </div>
 </div>
@@ -92,24 +84,90 @@
     const packetDataDiv = document.getElementById('packet-data');
     const threatDataDiv = document.getElementById('threat-data');
 
-    // Establish a connection to the stream endpoint
-    const eventSource = new EventSource('/stream');
+    let ipActivityChart = null;
+    let threatPieChart = null;
+    let timelineChart = null;
 
-    // Handle incoming packet data
+    function updateCharts() {
+        fetch('/stats')
+            .then(response => response.json())
+            .then(stats => {
+                const ipData = {
+                    x: Object.keys(stats.ip_activity),
+                    y: Object.values(stats.ip_activity),
+                    type: 'bar',
+                    marker: {
+                        color: 'rgba(50, 171, 96, 0.7)'
+                    }
+                };
+
+                const ipLayout = {
+                    title: 'IP Address Activity',
+                    yaxis: { title: 'Packet Count' },
+                    margin: { t: 30, b: 40, l: 60, r: 40 }
+                };
+
+                Plotly.newPlot('ip-activity', [ipData], ipLayout);
+
+                const pieData = {
+                    values: Object.values(stats.threat_types),
+                    labels: Object.keys(stats.threat_types),
+                    type: 'pie',
+                    hole: 0.4
+                };
+
+                const pieLayout = {
+                    title: 'Threat Distribution',
+                    margin: { t: 30, b: 20, l: 20, r: 20 }
+                };
+
+                Plotly.newPlot('threat-pie', [pieData], pieLayout);
+
+                const timeline = stats.threat_timeline;
+                const timelineData = {
+                    x: timeline.map(t => t.time),
+                    y: timeline.map(t => t.type),
+                    mode: 'markers',
+                    type: 'scatter',
+                    marker: {
+                        size: 10,
+                        color: timeline.map(t => {
+                            switch(t.severity) {
+                                case 'Critical': return '#ff0000';
+                                case 'High': return '#ff8c00';
+                                case 'Medium': return '#ffd700';
+                                default: return '#00ff00';
+                            }
+                        })
+                    }
+                };
+
+                const timelineLayout = {
+                    title: 'Threat Detection Timeline',
+                    yaxis: { title: 'Threat Type' },
+                    margin: { t: 30, b: 40, l: 100, r: 40 }
+                };
+
+                Plotly.newPlot('timeline', [timelineData], timelineLayout);
+            });
+    }
+
+    setInterval(updateCharts, 5000);
+    updateCharts();
+
+    const eventSource = new EventSource('/stream');
     eventSource.onmessage = function(event) {
         const data = JSON.parse(event.data);
 
-        // Add packet information
         const packetEntry = document.createElement('div');
         packetEntry.className = 'packet-entry';
         packetEntry.innerHTML = `
                 <strong>Packet:</strong> ${data.summary}<br>
-                <small>Protocol: ${data.analysis.protocol}</small>
+                <small>Protocol: ${data.analysis.packet_info.protocol}</small>
             `;
         packetDataDiv.appendChild(packetEntry);
         packetDataDiv.scrollTop = packetDataDiv.scrollHeight;
 
-        // If threats are detected, add them to the threat panel
         if (data.analysis.threats && data.analysis.threats.length > 0) {
             data.analysis.threats.forEach(threat => {
                 const threatEntry = document.createElement('div');
@@ -117,7 +175,15 @@
                 threatEntry.innerHTML = `
                         <strong>${threat.type}</strong> (${threat.severity})<br>
                         ${threat.details}<br>
-                        <span class="timestamp">${new Date().toLocaleTimeString()}</span>
+                        ${threat.additional_info ? `
+                            <small>
+                                Attempts: ${threat.additional_info.attempts_count}<br>
+                                Pattern: ${threat.additional_info.detected_pattern}<br>
+                                Port: ${threat.additional_info.port}<br>
+                                Window: ${threat.additional_info.time_window}
+                            </small>
+                        ` : ''}
+                        <small class="timestamp">${new Date().toLocaleTimeString()}</small>
                     `;
                 threatDataDiv.appendChild(threatEntry);
                 threatDataDiv.scrollTop = threatDataDiv.scrollHeight;

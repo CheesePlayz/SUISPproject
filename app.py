@@ -1,4 +1,4 @@
-from flask import Flask, Response, render_template
+from flask import Flask, Response, render_template, jsonify, request
 from scapy.all import sniff
 from scapy.config import conf
 from queue import Queue
@@ -6,17 +6,49 @@ import threading
 import json
 from packet_analyzer import PacketAnalyzer
 from alert_system import AlertSystem
-from config import *  # importamo sve konstante
+from config import *
+from collections import defaultdict
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
-# Thread-safe queue to store packets
 packet_queue = Queue()
 
-# Initialize the packet analyzer
+class NetworkStats:
+    def __init__(self):
+        self.ip_activity = defaultdict(int)
+        self.threat_types = defaultdict(int)
+        self.threat_timeline = []
+        self.lock = threading.Lock()
+
+    def update_ip_activity(self, ip):
+        with self.lock:
+            self.ip_activity[ip] += 1
+
+    def update_threat_stats(self, threat):
+        with self.lock:
+            self.threat_types[threat['type']] += 1
+            current_time = datetime.now().strftime('%H:%M:%S')
+            self.threat_timeline.append({
+                'time': current_time,
+                'type': threat['type'],
+                'severity': threat['severity']
+            })
+            if len(self.threat_timeline) > 100:
+                self.threat_timeline.pop(0)
+
+    def get_stats(self):
+        with self.lock:
+            return {
+                'ip_activity': dict(self.ip_activity),
+                'threat_types': dict(self.threat_types),
+                'threat_timeline': self.threat_timeline
+            }
+
+network_stats = NetworkStats()
+
 analyzer = PacketAnalyzer()
 
-# Configure the alert system using konstante iz config.py
 smtp_config = {
     'host': SMTP_HOST,
     'port': SMTP_PORT,
@@ -29,42 +61,62 @@ alert_system = AlertSystem(smtp_config)
 
 def sniff_packets():
     def process_packet(packet):
-        # Analyze packet
         analysis_result = analyzer.analyze_packet(packet)
         if analysis_result:
-            # Send alerts for any threats
+            network_stats.update_ip_activity(analysis_result["packet_info"]["src_ip"])
+
             if analysis_result["threats"]:
                 for threat in analysis_result["threats"]:
-                    # Send alert for high severity threats
+                    network_stats.update_threat_stats(threat)
                     if threat["severity"] in ["Critical", "High"]:
                         alert_system.send_alert(threat, analysis_result["packet_info"])
 
-            # Convert to JSON-friendly format and add to queue
+            if "packet_info" in analysis_result:
+                if "flags" in analysis_result["packet_info"] and analysis_result["packet_info"]["flags"] is not None:
+                    analysis_result["packet_info"]["flags"] = str(analysis_result["packet_info"]["flags"])
+                if "timestamp" in analysis_result["packet_info"]:
+                    analysis_result["packet_info"]["timestamp"] = \
+                        analysis_result["packet_info"]["timestamp"].strftime('%Y-%m-%d %H:%M:%S')
+
             packet_queue.put({
                 "summary": packet.sprintf("%IP.src% → %IP.dst% %IP.proto%"),
                 "analysis": analysis_result
             })
 
-    # Sniff packets on interface
-    sniff(iface="Wi-Fi", prn=process_packet, store=False, L2socket=conf.L3socket)
+    sniff(iface=NETWORK_INTERFACE, prn=process_packet, store=False, L2socket=conf.L3socket)
 
-# Route for the main page
+@app.route('/login', methods=['POST'])
+def login():
+    username = request.form.get('username', '')
+    password = request.form.get('password', '')
+    return jsonify({
+        'status': 'error',
+        'message': 'Invalid login attempt'
+    }), 401
+
 @app.route('/')
 def index():
     return render_template('index.html')
 
-# Route to stream packet data
 @app.route('/stream')
 def stream():
     def generate():
         while True:
-            # Wait for a packet in the queue
             packet_data = packet_queue.get()
+            if 'analysis' in packet_data and 'packet_info' in packet_data['analysis']:
+                if 'timestamp' in packet_data['analysis']['packet_info']:
+                    timestamp = packet_data['analysis']['packet_info']['timestamp']
+                    if hasattr(timestamp, 'strftime'):  # Provjera je li datetime objekt
+                        packet_data['analysis']['packet_info']['timestamp'] = \
+                            timestamp.strftime('%Y-%m-%d %H:%M:%S')
             yield f"data: {json.dumps(packet_data)}\n\n"
 
     return Response(generate(), content_type='text/event-stream')
 
-# Start the packet sniffer in a separate thread
+@app.route('/stats')
+def get_stats():
+    return jsonify(network_stats.get_stats())
+
 threading.Thread(target=sniff_packets, daemon=True).start()
 
 if __name__ == "__main__":
