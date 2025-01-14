@@ -5,7 +5,7 @@ SMTP_PASSWORD = 'ulns vane riem kvjg'
 SMTP_FROM_EMAIL = 'hkarlo356@gmail.com'
 SMTP_TO_EMAIL = 'hkarlo356@gmail.com'
 
-NETWORK_INTERFACE = 'Wi-Fi'
+NETWORK_INTERFACE = 'Ethernet'
 
 BRUTE_FORCE_THRESHOLD = 10  # broj pokušaja
 BRUTE_FORCE_WINDOW = 5      # vrijeme u minutama
